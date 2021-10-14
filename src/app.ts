@@ -20,7 +20,6 @@ const app = new App({
 });
 
 (async () => {
-  // Start your app
   await app.start(process.env.PORT || 3000);
   console.log("⚡️ Bolt app is running!");
 })();
@@ -34,20 +33,23 @@ app.action(ACTION_ID_ADD_SOTD, async ({ body, ack, say }: MessageCallback) => {
 });
 
 app.action(ACTION_ID_SUBMIT_SOTD, async ({ body, ack, say }: MessageCallback) => {
-  // TODO validate form - make sure link is valid
   const { message, state } = body;
 
   const valuesArray: { [key: string]: { value: any } }[] = Object.values(state?.values);
   const [songName, link, reason] = valuesArray.map((obj) => Object.values(obj)[0].value);
 
-  await ack();
+  if (!songName || !link || !reason) {
+    await say ('please provide a valid song name, link and reason behind nomination')
+    return;      
+  }
+
   try {
     await say(`Adding song to SOTD Channel....`);
+
     await publishMessageToSOTDChannel(`
       _${body.user.username}_ nominated *${songName}*
       \n>${reason}\n
-      ${link}
-    `);
+      ${link} - userId: ${body.user.id}`);
     await say(`${songName} was nominated in the Song of the Day channel`);
   } catch (e: any) {
     if (e.data.error === "not_in_channel") {
@@ -147,18 +149,19 @@ function getTimeStamp24HoursAgo() {
   return oldest;
 }
 
-function getMostRecentSongsForUsers(songsPostedInLast24Hours: { text: string, ts: string }[], usersInChannel: { name: string }[]): SongData[] {
+function getMostRecentSongsForUsers(songsPostedInLast24Hours: { text: string, ts: string }[], usersInChannel: { name: string, id: string }[]): SongData[] {
   const mostRecentSongsForUsersInChannel: Set<SongData> = new Set<SongData>();
 
-  const userNamesInCurrentChannel = usersInChannel.map(({ name }) => name);
+  const userIdsInCurrentChannel = usersInChannel.map(({ id }) => id);
 
   songsPostedInLast24Hours.forEach(({ text, ts }) => {
+    const textArray = text.split(" ");
+    const addedByUserName = textArray[0];    //post starts with user name
+    const userId = textArray[textArray.length - 1];    //post starts with user name
 
-    const userWhoPosted = text.split(" ")[0];    //post starts with user name
-
-    if (userNamesInCurrentChannel.includes(userWhoPosted)) {
+    if (userIdsInCurrentChannel.includes(userId)) {
       mostRecentSongsForUsersInChannel.add({
-        addedByUserName: userWhoPosted,
+        addedByUserName,
         text,
         ts
       });
